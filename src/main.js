@@ -1,141 +1,111 @@
-import iziToast from 'izitoast';
-import SimpleLightbox from 'simplelightbox';
+import { refs, simpleLightboxOptions, STORAGE_KEY } from "./constants/constants.js";
+import { getPhotos } from "./js/pixabay-api.js";
+import "izitoast/dist/css/iziToast.min.css";
+import "simplelightbox/dist/simple-lightbox.min.css";
+import iziToast from "izitoast";
+import SimpleLightbox from "simplelightbox";
+import loader from "./js/components/loader.js";
+import gallery from "./js/components/gallery.js";
+import loadButton from "./js/components/loadButton.js";
+import endWarning from "./js/components/endWarning.js";
 
-import {
-  renderSearchForm,
-  renderNewImages,
-  renderGalleryWrapper,
-  renderLoader,
-  renderButton, renderImages,
-} from './js/render-functions.js';
-import { getImagesFromAPI } from './js/pixabay-api.js';
-
-import 'izitoast/dist/css/iziToast.min.css';
-import 'simplelightbox/dist/simple-lightbox.min.css';
-
-iziToast.settings({
-  timeout: 3000,
-});
-
-const gallery = new SimpleLightbox('#gallery a', {
-  captionDelay: 250,
-  captionsData: 'alt',
-});
-
-const images = [];
-let query = '';
+let query = fillFormFields(refs.form);
 let page = 1;
 
-const searchResultsWarning = () => {
-  iziToast.warning({
-    icon: '',
-    iconText: '',
-    title: '⚠️ Warning',
-    message: "We're sorry, but you've reached the end of search results.",
-  });
+refs.form.addEventListener("input", handleFormInput);
+refs.form.addEventListener("submit", handleSearch);
+
+const simpleLightBox = new SimpleLightbox(".gallery li a", simpleLightboxOptions);
+
+
+function handleFormInput(e) {
+    query = e.target.value.trim();
+    localStorage.setItem(STORAGE_KEY, query);
 }
 
-const resetGallery = () => {
-  images.length = 0;
-  page = 1;
-}
 
-const onSubmitSearchFormHandler = async (event, form) => {
-  event.preventDefault();
-  query = form.elements.search.value;
-  const loader = document.querySelector('.loader-wrapper');
+async function handleSearch(e) {
+    e.preventDefault();
+    if (!query) return;
 
-  if (query.trim() !== '') {
-    const galleryContainer = document.querySelector('#gallery');
-    loader.classList.remove('hidden');
-    resetGallery();
+    page = 1;
+    loadButton.hide();
+    endWarning.hide();
+    gallery.clear();
+    loader.show();
 
-    const { images: newImages, total } = await getImagesFromAPI(query, page);
+    const { photos, isNext } = await fetchPictures();
 
-    renderNewImages(galleryContainer, newImages);
+    if (photos?.length) {
+        gallery.show(photos);
+        isNext && loadButton.show();
 
-    if (newImages.length) {
-      const button = document.querySelector('.load-more');
-      images.push(...newImages);
+        simpleLightBox.refresh();
+        localStorage.removeItem(STORAGE_KEY);
 
-      if (newImages.length >= total) {
-        searchResultsWarning();
-        button.classList.add('hidden');
-      } else {
-        button.classList.remove('hidden');
-      }
-      gallery.refresh();
-    } else {
-      iziToast.error({
-        icon: '',
-        iconText: '',
-        title: '❌ Error',
-        message: 'Sorry, there are no images matching your search query. Please try again!',
-      });
+        refs.form.reset();
+        page += 1;
     }
-  } else {
-    iziToast.warning({
-      icon: '',
-      iconText: '',
-      title: '⚠️ Warning',
-      message: 'Please enter a search query!',
-    });
-  }
 
-  loader.classList.add('hidden');
-  form.reset();
-};
+    loader.hide();
+}
 
-const onLoadImagesHandler = async (button) => {
-  const loader = document.querySelector('.loader-wrapper');
-  const galleryContainer = document.querySelector('#gallery');
 
-  button.classList.add('hidden');
-  loader.classList.remove('hidden');
+export async function handleLoadMore() {
+    loader.show();
+    loadButton.hide();
+    endWarning.hide();
 
-  const { images: newImages, total } = await getImagesFromAPI(query, page += 1);
-  images.push(...newImages);
+    const { photos, isNext } = await fetchPictures();
+    if (photos?.length === 0) {
+        endWarning.show();
+    }
+    else if (photos?.length) {
+        gallery.addNewPhotos(photos);
+        smoothScroll();
+        isNext ? loadButton.show() : endWarning.show();
+        simpleLightBox.refresh();
+        page += 1;
+    }
 
-  renderImages(galleryContainer, newImages);
-  gallery.refresh();
+    loader.hide();
+}
 
-  if (images.length >= total || newImages.length === 0) {
-    searchResultsWarning();
-  } else {
-    button.classList.remove('hidden');
-  }
 
-  if (newImages.length !== 0) {
-    const image = document.querySelector('.gallery-item');
-    if (image) {
-      const height = image.getBoundingClientRect().height;
-      window.scrollBy({
+async function fetchPictures() {
+    const data = await getPhotos(query, page);
+
+    const { photos } = data;
+
+    if (!photos) {
+        iziToast.error({ message: "Sorry, there was an error while getting photos. Please try again!", position: "topRight" });
+        return;
+    }
+    else if (photos.length === 0) {
+        console.log("==== 0 ==> ", 0);
+        iziToast.warning({ message: "Sorry, there are no images matching your search query. Please try again!", position: "topRight" });
+    }
+
+    return data;
+}
+
+
+function fillFormFields(form) {
+    const localStorageData = localStorage.getItem(STORAGE_KEY);
+    if (!localStorageData) return;
+
+    form.elements.query.value = localStorageData;
+    return localStorageData || "";
+}
+
+
+function smoothScroll() {
+    const card = document.querySelector(".gallery-card");
+    const height = card.getBoundingClientRect().height + 32;
+
+    window.scrollBy({
         top: height * 2,
-        behavior: 'smooth',
-      });
-    }
-  }
-
-  loader.classList.add('hidden');
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-  const root = document.getElementById('root');
-
-  renderSearchForm(root);
-  renderGalleryWrapper(root);
-  renderLoader(root);
-  renderButton(root);
-
-  const form = document.querySelector('#search-form');
-
-  form.addEventListener('submit', async (event) => {
-    await onSubmitSearchFormHandler(event, form);
-  });
-
-  const button = document.querySelector('.load-more');
-
-  button.addEventListener('click', async () => {
-    await onLoadImagesHandler(button);
-  });
-});
+        left: 0,
+        behavior: "smooth"
+    });
+}

@@ -1,40 +1,28 @@
-import axios from 'axios';
-import iziToast from 'izitoast';
+import { PX_API_KEY } from "../constants/constants.js";
+import axios from "axios";
 
-const API_KEY = '45273601-269fa7243c6da01438f09c62a';
+const BASE_URL = "https://pixabay.com/api";
+axios.defaults.baseURL = BASE_URL;
 
-const axiosInstance = axios.create({
-  baseURL: 'https://pixabay.com/api',
-  params: {
-    key: API_KEY,
-  },
-});
 
-export const getImagesFromAPI = async (searchQuery, page = 1, per_page = 15) => {
-  try {
-    const { data } = await axiosInstance.get('/', {
-      params: {
-        q: searchQuery,
-        image_type: 'photo',
-        orientation: 'horizontal',
-        page,
-        per_page,
-      },
-    });
-    return {
-      images: data.hits,
-      total: data.totalHits,
+export async function getPhotos(query, page) {
+    const params = {
+        key: PX_API_KEY,
+        q: query,
+        image_type: "photo",
+        orientation: "horizontal",
+        safesearch: true,
+        per_page: 15,
+        page
     };
-  } catch (error) {
-    iziToast.error({
-      icon: '',
-      iconText: '',
-      title: '❌ Error',
-      message: `Error while fetching images. Please try again! ${error}`,
-    });
-    return {
-      images: [],
-      total: 0,
-    };
-  }
+
+    try {
+        const response = await axios.get("/", { params });
+        const { hits, totalHits } = response?.data || {};
+
+        return hits ? { photos: hits, isNext: (15 * page) < totalHits } : {};
+    } catch (error) {
+        console.error("Fetch pixabay error: ", error instanceof Error ? error.message : error);
+        return {};
+    }
 }
