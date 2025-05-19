@@ -26,7 +26,10 @@ function handleFormInput(e) {
 
 async function handleSearch(e) {
     e.preventDefault();
-    if (!query) return;
+    if (!query) {
+        alert("No empty queries allowed!!!");
+        return;
+    }
 
     page = 1;
     loadButton.hide();
